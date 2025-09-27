@@ -55,8 +55,8 @@
 .sb-hero__actions { display: inline-flex; gap: 12px; }
 
 html, body, #root { height: 100%; margin: 0; }
-.app-shell:has(.sb-hero) { height: 100%; overflow: hidden; overscroll-behavior: none; }
-.app-shell:has(.sb-hero) .app-main { height: 100%; overflow: hidden; }
+.app-shell:has(.sb-hero) { min-height: 100%; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+.app-shell:has(.sb-hero) .app-main { min-height: 100%; overflow: visible; }
 .app-shell:has(.sb-hero) .st-header {
   position: fixed; top: 0; left: 0; right: 0;
   height: var(--header-h, 64px);

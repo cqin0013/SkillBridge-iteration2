@@ -135,22 +135,22 @@ const PrevSummary: React.FC<PrevSummaryProps> = ({
 
       {showBadge && (
         <DraggableBadgePortal
-          containerSelector="#main-content"     // mount inside main (below header)
+          containerSelector="#main-content"
           onClick={() => setOpen(true)}
           icon={<InfoCircleOutlined />}
           size={56}
           margin={12}
-          storageKey="prev-summary-badge-pos"
           initialEdge="left"
-          initialVertical="top"                 // start near the top
-          lockVertical="none"                   // ✅ no vertical lock; free Y movement
-          snapToEdge                            // keep horizontal edge snapping
-          bgClassName="bg-blue-600 dark:bg-blue-500"
+          initialVertical="center" 
+          lockVertical="none"      
+          snapToEdge
+          bgClassName="bg-blue-600"
           textClassName="text-white"
-          className="shadow-md"                 // or "shadow-none" if you want no shadow
+          className=""             
           iconSize={22}
-          moveThreshold={4}                     // responsive drag, avoids mis-click
-          zIndex={90}                              
+          moveThreshold={4}
+          zIndex={9}               
+          yMin={64 + 12}          
         />
       )}
     </>

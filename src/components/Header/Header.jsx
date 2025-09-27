@@ -56,7 +56,8 @@ export default function Header() {
         <nav id="primary-nav" className="st-nav" aria-label="Primary">
           <NavLink to="/Analyzer" className={linkClass}>Analyzer</NavLink>
           <NavLink to="/Profile"  className={linkClass}>Profile</NavLink>
-          {/* <NavLink to="/Insight"  className={linkClass}>Insight</NavLink> */}
+          <NavLink to="/Insight"  className={linkClass}>Insight</NavLink>
+          <NavLink to="/CareerJargonDecoder"  className={linkClass}>Jargon Search</NavLink>
         </nav>
       )}
 
@@ -71,7 +72,8 @@ export default function Header() {
           >
             <NavLink to="/Analyzer" className={linkClass}>Analyzer</NavLink>
             <NavLink to="/Profile"  className={linkClass}>Profile</NavLink>
-            {/* <NavLink to="/Insight"  className={linkClass}>Insight</NavLink> */}
+            <NavLink to="/Insight"  className={linkClass}>Insight</NavLink>
+            <NavLink to="/CareerJargonDecoder"  className={linkClass}>Jargon Search</NavLink>
           </nav>
 
           <button

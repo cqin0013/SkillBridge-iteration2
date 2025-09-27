@@ -1,333 +1,426 @@
-import React, { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+// src/pages/CareerJargonDecoder/CareerJargonDecoder.tsx
+import React, { useEffect, useState } from "react";
+import {
+  Input,
+  Card,
+  Tag,
+  Space,
+  Row,
+  Col,
+  Typography,
+  Skeleton,
+  Empty,
+  message,
+} from "antd";
+import {
+  SearchOutlined,
+  LinkOutlined,
+  DatabaseOutlined,
+  SafetyCertificateOutlined,
+} from "@ant-design/icons";
 
-/** Keep number within [min, max] */
-const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
-
-export interface DraggableBadgePortalProps {
-  onClick: () => void;                  // Fired on tap/click (dragging won't trigger)
-  icon?: React.ReactNode;               // Inner icon/node
-  containerSelector?: string;           // Main container selector (must be position: relative)
-
-  /* Appearance */
-  size?: number;                        // px (width = height)
-  margin?: number;                      // px to container edges
-  zIndex?: number;                      // z-index INSIDE the container
-  bgClassName?: string;                 // Tailwind bg, e.g. "bg-blue-600"
-  textClassName?: string;               // Tailwind text color, e.g. "text-white"
-  className?: string;                   // Extra Tailwind classes
-  iconSize?: number;                    // px
-  roundedClassName?: string;            // default "rounded-full" (circle)
-
-  /* Behavior */
-  storageKey?: string;                  // Persisted position key
-  initialEdge?: "left" | "right";       // Initial horizontal side
-  initialVertical?: "top" | "center" | "bottom";
-  snapToEdge?: boolean;                 // Snap to left/right on release
-  moveThreshold?: number;               // px to treat as drag (vs click)
-  lockVertical?: "none" | "top" | "bottom"; // lock Y to top/bottom edge (for “header 下方”固定在上边)
-  debugMode?: boolean;                  // optional: console warnings
-}
+const { Title, Text, Paragraph } = Typography;
 
 /**
- * DraggableBadgePortal
- * - Mounts into a specific container (absolute positioning inside that container).
- * - Smooth dragging via rAF + transform (no jitter, very responsive).
- * - Optional vertical lock to the top edge (header below).
- * - Dragging will NOT trigger click; only tap/click opens.
- * - Persists anchor position (left/top) in localStorage on release.
+ * CareerJargonDecoder (TSX, pure Ant Design + Tailwind)
+ *
+ * Layout:
+ * - Header: page title and subtitle
+ * - Search: input box (debounced) to query term definitions
+ * - Results: cards listing plain definition, context, example, sectors, and source
+ * - Data Sources: reference cards linking to official/credible databases
+ *
+ * Integration:
+ * - Replace `mockSearch` with your real API call when ready.
  */
-const DraggableBadgePortal: React.FC<DraggableBadgePortalProps> = ({
-  onClick,
-  icon,
-  containerSelector = "#main-content",
 
-  size = 56,
-  margin = 12,
-  zIndex = 90,
-  bgClassName = "bg-blue-600",
-  textClassName = "text-white",
-  className,
-  iconSize = 22,
-  roundedClassName = "rounded-full",
+// ----------------------------- Types -----------------------------
+type Sector = "VET" | "IT" | "Business" | "Healthcare" | "Education" | "General";
+type Region = "AU" | "EU" | "US" | "Global";
 
-  storageKey = "draggable-badge-pos",
-  initialEdge = "left",
-  initialVertical = "top",
-  snapToEdge = true,
-  moveThreshold = 4,
-  lockVertical = "top",
-  debugMode = false,
-}) => {
-  const [mounted, setMounted] = useState(false);
-  const [container, setContainer] = useState<HTMLElement | null>(null);
-
-  /** Anchored position (absolute left/top within container) */
-  const [pos, setPos] = useState<{ x: number; y: number }>({ x: margin, y: margin });
-
-  /** Container size for clamping */
-  const sizeRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
-
-  /** Dragging state */
-  const dragRef = useRef({
-    dragging: false,
-    startX: 0,
-    startY: 0,
-    origX: 0,
-    origY: 0,
-    moved: false,
-  });
-
-  /** Smooth dragging (translate only during drag) */
-  const elRef = useRef<HTMLButtonElement | null>(null);
-  const rafRef = useRef<number | null>(null);
-  const dragDeltaRef = useRef<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
-
-  useEffect(() => setMounted(true), []);
-
-  useEffect(() => {
-    if (!mounted) return;
-    const el = document.querySelector(containerSelector) as HTMLElement | null;
-    if (!el && debugMode) {
-      console.warn(`[Badge] container not found: ${containerSelector}`);
-    }
-    setContainer(el || null);
-  }, [mounted, containerSelector, debugMode]);
-
-  /** Observe container size (ResizeObserver + window resize) */
-  useEffect(() => {
-    if (!container) return;
-
-    const readSize = () => {
-      sizeRef.current = { w: container.clientWidth, h: container.clientHeight };
-    };
-
-    readSize();
-
-    const ro = new ResizeObserver(readSize);
-    ro.observe(container);
-
-    const onWinResize = () => readSize();
-    window.addEventListener("resize", onWinResize);
-
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", onWinResize);
-    };
-  }, [container]);
-
-  /** Initialize anchor position (after size known) */
-  useEffect(() => {
-    const { w, h } = sizeRef.current;
-    if (!container || w === 0 || h === 0) return;
-
-    // Defaults (top edge by request)
-    let initial = {
-      x: initialEdge === "right" ? Math.max(margin, w - size - margin) : margin,
-      y:
-        initialVertical === "top"
-          ? margin
-          : initialVertical === "center"
-          ? Math.max(margin, (h - size) / 2)
-          : Math.max(margin, h - size - margin),
-    };
-
-    try {
-      const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
-      if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) initial = saved;
-    } catch {}
-
-    // If lockVertical specified, force Y to top/bottom
-    if (lockVertical === "top") initial.y = margin;
-    if (lockVertical === "bottom") initial.y = Math.max(margin, h - size - margin);
-
-    setPos({
-      x: clamp(initial.x, margin, Math.max(0, w - size - margin)),
-      y: clamp(initial.y, margin, Math.max(0, h - size - margin)),
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    container,
-    size,
-    margin,
-    storageKey,
-    initialEdge,
-    initialVertical,
-    lockVertical,
-    sizeRef.current.w,
-    sizeRef.current.h,
-  ]);
-
-  /** rAF painter for transform during dragging */
-  const paint = () => {
-    const el = elRef.current;
-    if (!el) return;
-    const { dx, dy } = dragDeltaRef.current;
-    el.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
-    rafRef.current = null;
-  };
-
-  const schedulePaint = () => {
-    if (rafRef.current == null) {
-      rafRef.current = requestAnimationFrame(paint);
-    }
-  };
-
-  /** Pointer handlers */
-  const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (!container) return;
-    if (e.button === 0 || e.pointerType === "touch" || e.pointerType === "pen") {
-      dragRef.current = {
-        dragging: true,
-        startX: e.clientX,
-        startY: e.clientY,
-        origX: pos.x,
-        origY: pos.y,
-        moved: false,
-      };
-      // zero transform at drag start
-      dragDeltaRef.current = { dx: 0, dy: 0 };
-      schedulePaint();
-
-      // Prevent page scroll on touch drag
-      (e.currentTarget as HTMLElement).style.touchAction = "none";
-      e.currentTarget.setPointerCapture?.(e.pointerId);
-    }
-  };
-
-  const onPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (!dragRef.current.dragging || !container) return;
-
-    let dx = e.clientX - dragRef.current.startX;
-    let dy = e.clientY - dragRef.current.startY;
-
-    // Lock vertical if requested
-    if (lockVertical === "top") dy = 0;
-    if (lockVertical === "bottom") dy = 0;
-
-    // Mark as "moved" to suppress click
-    if (!dragRef.current.moved && (Math.abs(dx) > moveThreshold || Math.abs(dy) > moveThreshold)) {
-      dragRef.current.moved = true;
-    }
-
-    // Just store deltas; render via rAF transform
-    dragDeltaRef.current = { dx, dy };
-    schedulePaint();
-  };
-
-  const onPointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (!dragRef.current.dragging || !container) return;
-    dragRef.current.dragging = false;
-
-    // Commit final position (anchor = original + delta)
-    const { dx, dy } = dragDeltaRef.current;
-    const { w, h } = sizeRef.current;
-
-    let nextX = dragRef.current.origX + dx;
-    let nextY = dragRef.current.origY + dy;
-
-    // Respect vertical lock when committing
-    if (lockVertical === "top") nextY = margin;
-    if (lockVertical === "bottom") nextY = Math.max(margin, h - size - margin);
-
-    nextX = clamp(nextX, margin, Math.max(0, w - size - margin));
-    nextY = clamp(nextY, margin, Math.max(0, h - size - margin));
-
-    // Reset transform to zero, move anchor
-    const el = elRef.current;
-    if (el) el.style.transform = "translate3d(0,0,0)";
-    setPos({ x: nextX, y: nextY });
-
-    // Edge snapping (horizontal)
-    if (snapToEdge) {
-      const center = w / 2;
-      const toLeft = nextX + size / 2 < center;
-      const targetX = toLeft ? margin : Math.max(margin, w - size - margin);
-      setPos((p) => ({ ...p, x: targetX }));
-    }
-
-    // Release capture & restore touchAction
-    e.currentTarget.releasePointerCapture?.(e.pointerId);
-    (e.currentTarget as HTMLElement).style.touchAction = "";
-  };
-
-  const handleClick = () => {
-    // Only click when not dragged
-    if (!dragRef.current.moved) onClick?.();
-  };
-
-  // Guard: container not ready → don't render (or debug fallback)
-  const ready =
-    mounted && container && sizeRef.current.w > 0 && sizeRef.current.h > 0;
-
-  if (!ready) {
-    if (debugMode) {
-      return createPortal(
-        <button
-          type="button"
-          onClick={handleClick}
-          style={{
-            position: "fixed",
-            left: 16,
-            top: 80,
-            width: size,
-            height: size,
-            borderRadius: "50%",
-            border: "none",
-            outline: "none",
-            zIndex: 2_147_483_000,
-            background: "#ef4444",
-            color: "#fff",
-          }}
-        >
-          {icon}
-        </button>,
-        document.body
-      );
-    }
-    return null;
-  }
-
-  // Absolute inside container; no rectangular frame (pure circle)
-  const style: React.CSSProperties = {
-    position: "absolute",
-    left: pos.x,
-    top: pos.y,
-    width: size,
-    height: size,
-    zIndex,
-    /* Smooth dragging hint */
-    willChange: "transform",
-  };
-
-  const classes = [
-    "inline-flex items-center justify-center select-none",
-    "transition-transform duration-75 active:scale-95",
-    "cursor-grab active:cursor-grabbing outline-none border-0", // no border box
-    roundedClassName,                 // circle
-    bgClassName,                      // e.g. bg-blue-600
-    textClassName,                    // e.g. text-white
-    className ?? "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  return createPortal(
-    <button
-      ref={elRef}
-      type="button"
-      aria-label="Open panel"
-      style={style}
-      className={classes}
-      onClick={handleClick}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-    >
-      <span style={{ fontSize: iconSize, lineHeight: 1 }}>{icon}</span>
-    </button>,
-    container!
-  );
+type DataSource = {
+  id: string;
+  name: string;
+  url: string;
+  region: Region;
+  official: boolean;
+  description: string;
+  tags: string[];
 };
 
-export default DraggableBadgePortal;
+type TermResult = {
+  term: string;
+  plainDefinition: string;
+  context: string;
+  example: string;
+  relevance: number; // 0-100
+  sector: Sector[];
+  source?: string; // source id for attribution
+};
+
+// ------------------------- Data sources --------------------------
+const DATA_SOURCES: DataSource[] = [
+  {
+    id: "vocedplus",
+    name: "VOCEDplus VET Glossary",
+    url: "https://www.voced.edu.au/vet-knowledge-bank-glossary-vet",
+    region: "AU",
+    official: true,
+    description:
+      "Official glossary for VET terms in Australia maintained by NCVER/VOCEDplus.",
+    tags: ["glossary", "VET", "education"],
+  },
+  {
+    id: "ncver-glossary",
+    name: "NCVER Students and Courses Glossary (PDF)",
+    url: "https://www.ncver.edu.au/__data/assets/pdf_file/0031/9667300/Terms-and-definitions-Students-and-courses.pdf",
+    region: "AU",
+    official: true,
+    description:
+      "Authoritative terms and definitions for students and courses used by NCVER.",
+    tags: ["glossary", "VET", "students"],
+  },
+  {
+    id: "vocstats-def",
+    name: "VOCSTATS Field Definitions (PDF)",
+    url: "https://www.ncver.edu.au/__data/assets/pdf_file/0036/9670662/VOCSTATS_fields_terms_and_definitions_Dec2024.pdf",
+    region: "AU",
+    official: true,
+    description:
+      "Field terms and definitions used in VOCSTATS for Australian VET statistics.",
+    tags: ["statistics", "definitions", "VET"],
+  },
+  {
+    id: "asqa-glossary",
+    name: "ASQA Official Glossary",
+    url: "https://www.asqa.gov.au/resources/glossary",
+    region: "AU",
+    official: true,
+    description:
+      "Glossary from the Australian Skills Quality Authority for compliance and RTO terms.",
+    tags: ["compliance", "RTO", "glossary"],
+  },
+  {
+    id: "tga",
+    name: "training.gov.au (TGA)",
+    url: "https://training.gov.au/",
+    region: "AU",
+    official: true,
+    description:
+      "Official database of training packages, qualifications and accredited courses in Australia.",
+    tags: ["qualification", "courses", "official"],
+  },
+  {
+    id: "yourcareer",
+    name: "YourCareer (Job Outlook)",
+    url: "https://www.yourcareer.gov.au/",
+    region: "AU",
+    official: true,
+    description:
+      "Australian government career site: occupational profiles, trends and skills context.",
+    tags: ["careers", "occupations", "context"],
+  },
+  {
+    id: "anzsco",
+    name: "ANZSCO",
+    url: "https://www.abs.gov.au/statistics/classifications/anzsco-australian-and-new-zealand-standard-classification-occupations",
+    region: "AU",
+    official: true,
+    description:
+      "Classification of occupations for Australia and New Zealand, helpful for code references.",
+    tags: ["occupations", "codes", "standards"],
+  },
+  {
+    id: "esco",
+    name: "ESCO (EU)",
+    url: "https://esco.ec.europa.eu/en",
+    region: "EU",
+    official: true,
+    description:
+      "European multilingual classification of Skills/Competences, Qualifications and Occupations.",
+    tags: ["skills", "occupations", "glossary"],
+  },
+  {
+    id: "onet",
+    name: "O*NET Online (US)",
+    url: "https://www.onetonline.org/",
+    region: "US",
+    official: true,
+    description:
+      "US Department of Labor occupational database: detailed descriptors, tasks, skills.",
+    tags: ["skills", "occupations", "US"],
+  },
+  {
+    id: "pmi-pmbok",
+    name: "PMI PMBOK Glossary",
+    url: "https://www.pmi.org/",
+    region: "Global",
+    official: false,
+    description:
+      "Project management body of knowledge; commonly referenced for PM acronyms.",
+    tags: ["PM", "glossary", "certifications"],
+  },
+];
+
+// ------------------------- Mock search data ----------------------
+const MOCK_TERMS: Record<string, TermResult> = {
+  rto: {
+    term: "RTO",
+    plainDefinition:
+      "Registered Training Organisation: a provider approved to deliver nationally recognised training and qualifications in Australia.",
+    context:
+      "Used across VET and compliance contexts; commonly appears on course pages and AQF-aligned qualifications.",
+    example:
+      "Example: 'This course is delivered by RTO 12345 and leads to a nationally recognised Statement of Attainment.'",
+    relevance: 95,
+    sector: ["VET", "Education", "General"],
+    source: "asqa-glossary",
+  },
+  microcredential: {
+    term: "Microcredential",
+    plainDefinition:
+      "A short, focused learning unit certifying specific skills or knowledge, often stackable towards larger qualifications.",
+    context:
+      "Appears in university short courses, MOOC platforms and industry upskilling programs.",
+    example:
+      "Example: 'Complete three cloud microcredentials to earn credit towards a Graduate Certificate in Data Engineering.'",
+    relevance: 88,
+    sector: ["IT", "Business", "Education", "General"],
+    source: "ncver-glossary",
+  },
+  pmbok: {
+    term: "PMBOK",
+    plainDefinition:
+      "Project Management Body of Knowledge: PMI’s framework and guidelines covering standard project management practices.",
+    context:
+      "Used in PM roles, PMP certification prep, and project governance documentation.",
+    example:
+      "Example: 'Our process aligns with PMBOK knowledge areas, including scope, schedule and risk management.'",
+    relevance: 82,
+    sector: ["Business", "General"],
+    source: "pmi-pmbok",
+  },
+};
+
+/** Simulated async search; replace with your real API integration */
+const mockSearch = async (query: string): Promise<TermResult[]> => {
+  await new Promise((r) => setTimeout(r, 300)); // simulate latency
+  const q = (query || "").trim().toLowerCase();
+  if (!q) return [];
+  const all = Object.values(MOCK_TERMS);
+
+  // Basic scoring: exact term match gets a boost; partial match uses includes()
+  const scored = all
+    .map((t) => {
+      const base = t.relevance;
+      const term = t.term.toLowerCase();
+      const def = t.plainDefinition.toLowerCase();
+      const termHit = term === q ? 15 : term.includes(q) ? 8 : 0;
+      const defHit = def.includes(q) ? 5 : 0;
+      return { item: t, score: base + termHit + defHit };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((x) => x.item);
+
+  return scored;
+};
+
+// ---------------------------- Component --------------------------
+export default function CareerJargonDecoder() {
+  const [query, setQuery] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(false);
+  const [results, setResults] = useState<TermResult[] | null>(null);
+
+  // Debounced search without extra libs
+  useEffect(() => {
+    if (!(query || "").trim()) {
+      setResults(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const handle = setTimeout(async () => {
+      try {
+        // Replace with your real API call:
+        // const data = await fetch(`/api/jargon/search?q=${encodeURIComponent(query)}`).then(r => r.json());
+        // setResults(data.items as TermResult[]);
+        const res = await mockSearch(query);
+        setResults(res);
+      } catch (e) {
+        console.error(e);
+        message.error("Search failed. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(handle);
+  }, [query]);
+
+  return (
+    <div className="w-full max-w-6xl mx-auto px-4 py-6">
+      {/* ===== Header ===== */}
+      <header className="mb-4">
+        <Title level={3} className="!mb-1">
+          Career Jargon Decoder
+        </Title>
+        <Text type="secondary">
+          Type a term (e.g., “RTO”, “microcredential”, “PMBOK”) to view
+          plain-language definitions, context, examples and relevance.
+        </Text>
+      </header>
+
+      {/* ===== Search ===== */}
+      <Card className="shadow-sm" bodyStyle={{ padding: 16 }}>
+        <Space direction="vertical" className="w-full">
+          <Input
+            allowClear
+            size="large"
+            placeholder='Search: try "RTO", "microcredential", "PMBOK"...'
+            prefix={<SearchOutlined />}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onPressEnter={(e) => setQuery((e.target as HTMLInputElement).value)}
+            aria-label="Search career jargon term"
+          />
+          <div className="text-xs text-gray-500">
+            <Text type="secondary">
+              This search uses a local mock; replace with your API when ready.
+            </Text>
+          </div>
+        </Space>
+      </Card>
+
+      {/* ===== Results ===== */}
+      <div className="mt-4">
+        <Card className="shadow-sm" bodyStyle={{ padding: 16 }} title="Search Results">
+          {loading && (
+            <div className="flex flex-col gap-3">
+              <Skeleton active paragraph={{ rows: 2 }} />
+              <Skeleton active paragraph={{ rows: 2 }} />
+            </div>
+          )}
+
+          {!loading && results === null && (
+            <div className="text-sm text-gray-500">Start typing to search…</div>
+          )}
+
+          {!loading && Array.isArray(results) && results.length === 0 && (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No results" />
+          )}
+
+          {!loading && Array.isArray(results) && results.length > 0 && (
+            <Space direction="vertical" className="w-full">
+              {results.map((r) => (
+                <Card
+                  key={r.term}
+                  size="small"
+                  className="border border-gray-100 hover:shadow-sm transition"
+                >
+                  <Space direction="vertical" className="w-full">
+                    <Space className="justify-between w-full">
+                      <Space>
+                        <SafetyCertificateOutlined />
+                        <span className="font-medium">{r.term}</span>
+                      </Space>
+                      <Tag color={r.relevance >= 85 ? "green" : "blue"}>
+                        Relevance: {r.relevance}
+                      </Tag>
+                    </Space>
+
+                    <Paragraph className="!mb-2">{r.plainDefinition}</Paragraph>
+
+                    <Row gutter={[16, 8]}>
+                      <Col xs={24} md={12}>
+                        <Text type="secondary">Context</Text>
+                        <Paragraph className="!mb-0">{r.context}</Paragraph>
+                      </Col>
+                      <Col xs={24} md={12}>
+                        <Text type="secondary">Example</Text>
+                        <Paragraph className="!mb-0">{r.example}</Paragraph>
+                      </Col>
+                    </Row>
+
+                    <Space className="justify-between w-full pt-1">
+                      <Space wrap>
+                        {r.sector.map((s) => (
+                          <Tag key={s}>{s}</Tag>
+                        ))}
+                      </Space>
+                      {r.source && (
+                        <a
+                          href={DATA_SOURCES.find((d) => d.id === r.source)?.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-1 text-xs"
+                          aria-label="Open source"
+                        >
+                          <LinkOutlined />
+                          {DATA_SOURCES.find((d) => d.id === r.source)?.name ?? r.source}
+                        </a>
+                      )}
+                    </Space>
+                  </Space>
+                </Card>
+              ))}
+            </Space>
+          )}
+        </Card>
+      </div>
+
+      {/* ===== Data Sources ===== */}
+      <div className="mt-4">
+        <Card
+          className="shadow-sm"
+          bodyStyle={{ paddingTop: 12 }}
+          title={
+            <Space>
+              <DatabaseOutlined />
+              <span>Data Sources</span>
+            </Space>
+          }
+        >
+          <Row gutter={[16, 16]}>
+            {DATA_SOURCES.map((src) => (
+              <Col key={src.id} xs={24} sm={12} md={12} lg={8}>
+                <Card
+                  hoverable
+                  className="h-full border border-gray-100"
+                  actions={[
+                    <a
+                      key="visit"
+                      href={src.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-center gap-1"
+                      aria-label={`Open ${src.name}`}
+                    >
+                      <LinkOutlined /> Visit
+                    </a>,
+                  ]}
+                >
+                  <Space direction="vertical" className="w-full">
+                    <Space className="justify-between w-full">
+                      <span className="font-medium">{src.name}</span>
+                      <Space>
+                        {src.official && <Tag color="green">Official</Tag>}
+                        <Tag>{src.region}</Tag>
+                      </Space>
+                    </Space>
+                    <Text type="secondary">{src.description}</Text>
+                    <Space wrap className="pt-1">
+                      {src.tags.map((t) => (
+                        <Tag key={t}>{t}</Tag>
+                      ))}
+                    </Space>
+                  </Space>
+                </Card>
+              </Col>
+            ))}
+          </Row>
+        </Card>
+      </div>
+    </div>
+  );
+}

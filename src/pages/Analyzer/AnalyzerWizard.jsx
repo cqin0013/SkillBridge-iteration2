@@ -5,7 +5,7 @@ import { Modal } from "antd";
 
 import { TwoCardScaffold } from "./Analyzer";
 import PrevSummary from "../../components/ui/PrevSummary/PrevSummary.tsx";
-import ProgressBar from "../../components/ui/ProgressBar/ProgressBar";
+import ProgressBar from "../../components/ui/ProgressBar/ProgressBar.tsx";
 
 import AnalyzerIntro from "./AnalyzerIntro/AnalyzerIntro";
 import GetInfo from "./GetInfo/GetInfo";

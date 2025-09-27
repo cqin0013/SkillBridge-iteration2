@@ -12,7 +12,7 @@ const Analyzer = lazy(() => import("./pages/Analyzer/Analyzer.jsx"));
 const Insight = lazy(() => import("./pages/Insight/Insight.jsx"));
 const Profile = lazy(() => import("./pages/Profile/Profile.jsx"));
 const PasswordGate = lazy(() => import("./pages/Gate/PasswordGate.jsx"));
-
+const CareerJargonDecoder = lazy(() => import("./pages/CareerJargonDecoder/CareerJargonDecoder.tsx"));
 
 export default function App() {
   return (
@@ -51,6 +51,14 @@ export default function App() {
                 element={
                   <RequireGate>
                     <Profile />
+                  </RequireGate>
+                }
+              />
+              <Route
+                path="CareerJargonDecoder"
+                element={
+                  <RequireGate>
+                    <CareerJargonDecoder />
                   </RequireGate>
                 }
               />

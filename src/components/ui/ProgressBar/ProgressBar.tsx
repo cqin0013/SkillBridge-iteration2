@@ -1,10 +1,29 @@
+import React from "react";
 import { Progress, Typography } from "antd";
 import "./ProgressBar.css";
 
 const { Text } = Typography;
 
-export default function ProgressBar({ current = 0, total = 1, label }) {
-  // Business rule: Intro (step=0) not counted in percentage
+export interface ProgressBarProps {
+  /** Current step index (0-based) */
+  current?: number;
+  /** Total steps (minimum 1; Intro step=0 not counted in percentage) */
+  total?: number;
+  /** Optional label displayed next to the bar */
+  label?: string;
+}
+
+/**
+ * ProgressBar (TypeScript version)
+ *
+ * - Calculates percentage excluding the "Intro" (step 0).
+ * - Renders AntD Progress without info text.
+ */
+const ProgressBar: React.FC<ProgressBarProps> = ({
+  current = 0,
+  total = 1,
+  label,
+}) => {
   const steps = Math.max(1, total);
   const cur = Math.min(Math.max(0, current), steps - 1);
   const percent = steps > 1 ? Math.round((cur / (steps - 1)) * 100) : 0;
@@ -25,4 +44,11 @@ export default function ProgressBar({ current = 0, total = 1, label }) {
       </div>
     </div>
   );
-}
+};
+
+export default ProgressBar;
+
+
+
+
+

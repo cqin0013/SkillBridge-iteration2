@@ -146,7 +146,7 @@ export default function Insight() {
     const run = async () => {
       const trimmedCode = String(jobCode || "").trim();
       if (!trimmedCode) {
-        resetCounts("Select a job to view state employment snapshot.");
+        // resetCounts("Select a job to view state employment snapshot.");
         setMapLoading(false);
         return;
       }
@@ -246,7 +246,7 @@ export default function Insight() {
       <div className="insight-stage">
         <StageBox
           step="Insights"
-          title={`Job opportunities for ${jobTitle}`}
+          title={`Job Info for ${jobTitle}`}
           accent="#6366f1"
           defaultCollapsed={true}
           hint="Click to view details"
